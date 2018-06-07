@@ -1,0 +1,331 @@
+#include <boarddefs.h>
+#include <IRremote.h>
+#include <IRremoteInt.h>
+#include <ir_Lego_PF_BitStreamEncoder.h>
+
+#include "Types.h"
+#include "Motors.h"
+#include "Ultrasonic.h"
+
+
+IRrecv irrecv(2);
+IRsend irsend;
+decode_results results;
+
+uint8 rt_dist , lt_dist , fwd_dist;
+uint8 rt_dist_ant, lt_dist_ant, fwd_dist_ant;
+NewPing sonar1(trig_1, echo_1, Max_Dist); 
+NewPing sonar2(trig_2, echo_2, Max_Dist); 
+NewPing sonar3(trig_3, echo_3, Max_Dist);
+
+uint16 value;
+
+uint8 counter_seconds;
+
+uint8 flag = 1;
+uint8 algo_flag=2;  
+
+uint32 speed_val_lt;
+uint32 speed_val_rt;
+
+// verificare pini led 39 41 43
+
+uint32 RED = 39;
+uint32 GREEN = 41;
+uint32 BLUE = 43;
+
+uint32 counter_r = 0;
+uint32 counter_l = 0;
+
+uint8 i = 0;
+uint32 counter_return = 0;
+uint32 ledCounter = millis();
+uint8 sec = 0;
+
+void algorithm();
+
+void oprire()
+{
+analogWrite( MOTOR_Left_1,0);
+analogWrite(MOTOR_Left_2,0);
+
+
+analogWrite( MOTOR_Right_1,0);
+analogWrite(MOTOR_Right_2,0);
+}
+
+
+void setup() {
+  // put your setup code here, to run once:
+
+ //   irrecv.enableIRIn(); // Start the receiver
+
+    pinMode(39, OUTPUT);
+    pinMode(41, OUTPUT);
+    pinMode(43, OUTPUT);
+    
+    pingTimer1 = millis() + pingSpeed; // Sensor 1 fires after 1 second (pingSpeed)
+    pingTimer2 = pingTimer1 + delay_ping; // Sensor 2 fires 35ms later
+    pingTimer3 = pingTimer2 + delay_ping;
+
+    counter_seconds = millis();
+    
+    Serial.begin(9600);
+    }
+
+void go(uint8 MOTOR_rt,uint8 MOTOR_lt, uint8 dir)
+{
+  if (dir )
+  {
+    
+  analogWrite( MOTOR_Left_1,MOTOR_lt);
+  analogWrite(MOTOR_Left_2,0);
+
+
+  analogWrite( MOTOR_Right_1,0);
+  analogWrite(MOTOR_Right_2,MOTOR_rt);
+  }
+  else
+  {
+  analogWrite( MOTOR_Left_1,0);
+  analogWrite(MOTOR_Left_2,MOTOR_lt);
+  
+  
+  analogWrite( MOTOR_Right_1,MOTOR_rt);
+  analogWrite(MOTOR_Right_2,0);
+  }
+ }
+
+/*********************************************************LOOP*******************************************************************/
+
+void loop() {
+//Serial.print(counter_r);
+//Serial.println("/counter r is:>>>>>>>>>>>");
+//Serial.print(counter_l);
+//Serial.println(" counter l      is: >>>>");
+
+
+sec++;
+digitalWrite(39, HIGH);
+
+//if(sec > 60){
+//counter_seconds++;
+algorithm();
+
+digitalWrite(39, LOW);
+//}
+//else{
+//  go(0,0,1);
+ // }
+
+
+
+}
+
+void algorithm(){
+
+
+rt_dist = sonar2.ping_cm();
+lt_dist= sonar1.ping_cm();
+fwd_dist = sonar3.ping_cm();
+
+if(rt_dist == 0)
+{
+  rt_dist = rt_dist_ant;
+}
+if(lt_dist == 0)
+{
+  lt_dist = lt_dist_ant;
+}
+if(fwd_dist == 0)
+{
+  fwd_dist = fwd_dist_ant;
+}
+if(counter_seconds % 5 == 0){
+
+digitalWrite(RED, HIGH);
+ 
+  }
+else{
+digitalWrite(BLUE, LOW);
+digitalWrite(RED, LOW);
+  }
+  
+
+//Serial.println(String(flag));
+switch(flag)
+{
+
+  // merge in fata
+  case 1:
+counter_return = 1;
+  counter_r = 1;
+  counter_l = 1;
+  i = 42; // era 30
+  
+  Serial.println(String(fwd_dist) + " " + String(lt_dist) + " " + String(rt_dist) + "-> forward"); // fw 8
+        //if(((rt_dist <=8 ) && (lt_dist <=8)) || ((rt_dist <8 )&& (lt_dist >8) && (fwd_dist >20) /*era 8*/)) //conditei de pargurgere a labirintului in fata // algo flag = 2
+        if (rt_dist<=10 && fwd_dist > 22)
+        {
+         // if(10 - lt_dist < 0)
+         // {
+         // speed_val_lt = 120 - 8*(10 - lt_dist);
+         // }
+          //else
+          //{
+          
+         // speed_val_lt = 130 + 10*(10 - lt_dist);
+
+          speed_val_lt = 110 + 10*(8 - lt_dist);  // 110 9 8
+          //}
+         // speed_val_rt = 120 - 8*(8 - rt_dist);
+
+          //
+          //Serial.println(String(speed_val_lt) + " " + String(speed_val_rt));
+          go(110, speed_val_lt, 1);  // mers inainte
+        } // fw 12
+        else if((lt_dist <= 15) && (fwd_dist<=25) && (rt_dist > 15)) // merge din fata la dreapta (fw < 12 => nu mai poate merge in fata
+        {
+          flag = 2;     
+        }
+        else if(lt_dist > 25/* && fwd_dist <= 27 && lt_dist>15*/)// merge din fata la stanga
+        {
+          flag=3;
+        }
+        else if((lt_dist<=10)&&(rt_dist<=10) && (fwd_dist<=10) && ((lt_dist > 2)&&(rt_dist > 2) && (fwd_dist > 2)))
+        {
+          flag = 0;
+        }
+        else if(rt_dist <= 1 || lt_dist <= 1 || fwd_dist <= 1)  
+        {
+         
+         // flag = 4;
+        }
+        break;
+
+  // vireaza dreapta
+  case 2:
+  {
+    counter_r++;
+    i--;
+    Serial.println(String(fwd_dist) + " " + String(lt_dist) + " " + String(rt_dist) + "-> turning right");
+      if(counter_r < 14){
+          go(i, 200, 1);
+        }
+if (counter_r >= 13){
+  Serial.println("counter_r: " + String(counter_r));
+  flag = 1;
+  }
+      
+        }
+  break;
+  
+  // vireaza stanga
+  case 3:
+  { counter_l++;
+    i--;
+    Serial.println(String(fwd_dist) + " " + String(lt_dist) + " " + String(rt_dist) + "-> turning left"); 
+
+     if(counter_l <13){
+      go(190,i,1);
+     }
+    if (counter_l >= 12){
+      Serial.println("counter_l: " + String(counter_l));
+     flag = 1;
+     }
+      
+  break;
+  case 4:
+  {
+    //go(100,100,0);
+    //delay(50);
+    //flag = 1;
+  }
+  break;
+  case 0:
+  //Serial.println(String(flag));
+        //oprire();
+
+  counter_return++;
+        //Serial.println("Timp scurs: " + String(millis() - counter_seconds));
+      //Serial.println("Seconds elapsed:" + String(counter_seconds));
+      //Serial.println("Counter return:" + String(counter_return));
+      if((millis() - counter_seconds) > 25000){
+       digitalWrite(RED, LOW);
+       digitalWrite(BLUE, LOW);
+       digitalWrite(GREEN, LOW);
+       
+       digitalWrite(GREEN, HIGH);
+       Serial.println("stop");
+       irsend.sendSony(0x76656f6e6565720a, 12); //send 0xa90 on infrared
+        go(0, 0, 1);
+ }
+     
+    
+   else{
+   //Serial.println("Counter return: " + String(counter_return));
+   if(counter_return < 45){
+
+   
+/*    analogWrite( MOTOR_Left_1,0);
+    analogWrite(MOTOR_Left_2,180);
+    analogWrite( MOTOR_Right_1,180);
+    analogWrite(MOTOR_Right_2,0);
+    }*/
+     Serial.println("go back");
+
+  analogWrite(MOTOR_Right_1,150);
+  analogWrite(MOTOR_Right_2,150);
+    // ml spate 
+  analogWrite( MOTOR_Left_1,0);
+  analogWrite(MOTOR_Left_2, 0);}
+   else{
+      
+  flag=1;}
+  }
+    
+        
+       
+        break;
+}
+  
+}   
+  
+
+//go(200, 200,1);
+
+
+//Serial.println(sonar1.ping_cm());//(stanga senzor senz_st)
+//Serial.print("   ");
+
+//Serial.println(sonar2.ping_cm());//(dreapta senzor senz_dr)
+//Serial.print("   ");
+
+//Serial.print(sonar3.ping_cm());//(fata senzor senz_fata)
+//Serial.println(" ");
+// -------------------
+
+// ------------------
+//analogWrite( MOTOR_Left_1,255);
+//analogWrite(MOTOR_Left_2,0);
+
+
+//analogWrite( MOTOR_Right_1,0);
+//analogWrite(MOTOR_Right_2,255);
+
+
+ /*if ((irrecv.decode(&results)))
+   {
+     irrecv.resume();  
+     value= results.value;
+    Serial.println(value);
+   }*/
+ 
+
+  rt_dist_ant = rt_dist;
+  lt_dist_ant = lt_dist;
+  fwd_dist_ant = fwd_dist;
+  }
+
+
+
